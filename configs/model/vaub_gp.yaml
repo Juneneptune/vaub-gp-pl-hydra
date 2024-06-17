@@ -60,7 +60,7 @@ classifier:
   input_height: 16
   input_width: 16
 
-beta: 4
+beta: 0.5
 gp_lambda: 1e-2
 cls_lambda: 0.001 
 is_vanilla: true

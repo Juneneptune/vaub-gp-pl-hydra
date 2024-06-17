@@ -120,7 +120,7 @@ class VAUBGPModule(LightningModule):
                                                                                    self.hparams.beta,
                                                                                    score=score, DSM=None)
 
-            gp_loss = calculate_gp_loss([x1.view((x1.shape[0], -1)), x2.view((x1.shape[0], -1))], [z1, z2])
+            gp_loss = calculate_gp_loss([x1.view((x1.shape[0], -1)), x2.view((x1.shape[0], -1))], [z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))])
 
             output_cls = self.classifier(z1)
             classifier_loss = F.cross_entropy(output_cls, label1, reduction='sum')

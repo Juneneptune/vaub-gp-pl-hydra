@@ -5,7 +5,7 @@ import torch.nn.functional as F
 # Define a Residual Block
 class ResidualBlockVAE(nn.Module):
     def __init__(self, in_channels, out_channels):
-        super(ResidualBlockVAE, self).__init__()
+        super().__init__()
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
         self.bn1 = nn.BatchNorm2d(out_channels)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
@@ -21,7 +21,7 @@ class ResidualBlockVAE(nn.Module):
 # Define the Encoder with Skip Connections and Residual Blocks
 class Encoder(nn.Module):
     def __init__(self, latent_size=64, is_svhn=False):
-        super(Encoder, self).__init__()
+        super().__init__()
         self.latent_size = latent_size
         self.conv1 = nn.Conv2d(1, 16, 4, 2, 1)  # (batch_size, 32, 14, 14)
         self.res1 = ResidualBlockVAE(16, 16)
@@ -52,7 +52,7 @@ class Encoder(nn.Module):
 # Define the Decoder with Skip Connections and Residual Blocks
 class Decoder(nn.Module):
     def __init__(self, latent_size=64, is_svhn=False):
-        super(Decoder, self).__init__()
+        super().__init__()
         self.latent_size = latent_size
         self.res1 = ResidualBlockVAE(latent_size, latent_size)
         self.conv1 = nn.ConvTranspose2d(latent_size, 64, 4)  # (batch_size, 64, 4, 4)
@@ -76,7 +76,7 @@ class Decoder(nn.Module):
 # Define the VAE with Skip Connections and Residual Blocks
 class CNN_VAE(nn.Module):
     def __init__(self, latent_height=8, latent_width=8, is_svhn=False):
-        super(VAE, self).__init__()
+        super().__init__()
         self.latent_height = latent_height
         self.latent_width = latent_width
         
