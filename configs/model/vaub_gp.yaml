@@ -3,13 +3,13 @@ _target_: src.models.vaub_gp_module.VAUBGPModule
 optimizer_vae_1:
   _target_: torch.optim.Adam
   _partial_: true
-  lr: 2e-3
+  lr: 1e-3
   weight_decay: 0.0
 
 optimizer_vae_2:
   _target_: torch.optim.Adam
   _partial_: true
-  lr: 2e-3
+  lr: 1e-3
   weight_decay: 0.0
 
 optimizer_score:
@@ -21,7 +21,7 @@ optimizer_score:
 optimizer_cls:
   _target_: torch.optim.Adam
   _partial_: true
-  lr: 2e-3
+  lr: 1e-5
   weight_decay: 0.0
 
 #scheduler:
@@ -60,7 +60,7 @@ classifier:
   input_height: 16
   input_width: 16
 
-beta: 0.5
+beta: 2
 gp_lambda: 1e-2
 cls_lambda: 0.001 
 is_vanilla: true

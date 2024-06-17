@@ -8,7 +8,7 @@ from torchmetrics.classification.accuracy import Accuracy
 import torch.nn.functional as F
 
 from ..utils.utils_gp import calculate_gp_loss
-from ..utils.utils_visual import display_reconstructed_and_flip_images
+from ..utils.utils_visual import display_reconstructed_and_flip_images, plt_scatter_alignment
 
 class VAUBGPModule(LightningModule):
 
@@ -158,7 +158,8 @@ class VAUBGPModule(LightningModule):
         "Lightning hook that is called when a training epoch ends."
         pass
 
-    def model_step(self, batch) -> tuple[torch.Tensor, torch.Tensor]:
+    # Added extra parameter for returning the concate latent samples for distribution visualization
+    def model_step(self, batch, is_visualize_align=False) -> tuple[torch.Tensor, torch.Tensor]:
 
         _, (x1, label1), (x2, label2) = batch
 
@@ -169,13 +170,15 @@ class VAUBGPModule(LightningModule):
 
         self.val_src_acc(outputs_ori, label1)
         self.val_tgt_acc(outputs_flip, label2)
-
+        if is_visualize_align:
+            return outputs_ori, outputs_flip, torch.vstack((z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))))
         return outputs_ori, outputs_flip
 
     def validation_step(self, batch, batch_idx: int) -> None:
 
         _, (x1, label1), (x2, label2) = batch
-        outputs_ori, outputs_flip = self.model_step(batch)
+        outputs_ori, outputs_flip, z = self.model_step(batch, is_visualize_align=True)
+        # outputs_ori, outputs_flip = self.model_step(batch)
 
         # update and log metrics
         self.val_src_acc(outputs_ori, label1)
@@ -189,7 +192,8 @@ class VAUBGPModule(LightningModule):
             flip_vae_model=self.flip_mnist_vae,
             data=x1,
             dim=[1, 28, 28],
-            flip_dim=[1, 28, 28]
+            flip_dim=[1, 28, 28],
+            is_both=True
         )
         plt_flip = display_reconstructed_and_flip_images(
             epoch=self.current_epoch,
@@ -197,15 +201,23 @@ class VAUBGPModule(LightningModule):
             flip_vae_model=self.mnist_vae,
             data=x2,
             dim=[1, 28, 28],
-            flip_dim=[1, 28, 28]
+            flip_dim=[1, 28, 28],
+            is_both=True
+        )
+        plt_top_k_feature_distribution = plt_scatter_alignment(
+            X=z,
+            k=2,
+            is_both=True
         )
 
         logger_experiment = self.logger.experiment
         logger_experiment.add_figure("Original to Flipped", plt_ori.gcf(), self.global_step)
         logger_experiment.add_figure("Flipped to Original", plt_flip.gcf(), self.global_step)
+        logger_experiment.add_figure("Alignment", plt_top_k_feature_distribution.gcf(), self.global_step)
 
         plt_ori.close()
         plt_flip.close()
+        plt_top_k_feature_distribution.close()
 
     def on_validation_epoch_end(self) -> None:
         "Lightning hook that is called when a validation epoch ends."

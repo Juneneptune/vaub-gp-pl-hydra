@@ -22,7 +22,7 @@ def display_reconstructed_images(epoch, vae_model, data, n_samples=10, dim=[1, 2
 
 
 def display_reconstructed_and_flip_images(epoch, vae_model, flip_vae_model, data, n_samples=10, dim=[1, 28, 28],
-                                          flip_dim=[3, 32, 32], is_mnist=True, is_both=True):
+                                          flip_dim=[3, 32, 32], is_mnist=False, is_both=False):
     vae_model.eval()
     with torch.no_grad():
         data = data[:n_samples]
@@ -57,4 +57,73 @@ def display_reconstructed_and_flip_images(epoch, vae_model, flip_vae_model, data
             axes[2, i].imshow(np.transpose(recon_x_flip[i].detach().cpu().numpy(), (1, 2, 0)), cmap=flip_color)
             axes[2, i].axis('off')
 
+    return plt
+
+
+def extract_top_k_features(data, k, is_pca=False, is_both=False):
+    """
+    Perform PCA on the input data and extract the most important features based on the top k principal components.
+    
+    Args:
+        data (torch.Tensor): Input data matrix of shape (n_samples, n_features)
+        k (int): Number of top principal components to consider
+
+    Returns:
+        torch.Tensor: The data reduced to the most important features
+        torch.Tensor: The indices of the most important features
+    """
+    # Center the data by subtracting the mean of each feature
+    data_mean = torch.mean(data, dim=0)
+    data_centered = data - data_mean
+
+    # Perform SVD on the centered data
+    U, S, V = torch.svd(data_centered)
+
+    # The top k principal components are the first k columns of V
+    top_k_components = V[:, :k]
+
+    # Compute the importance of each feature by the magnitude of the loadings
+    feature_top_k = torch.sum(top_k_components**2, dim=1)
+
+    # Get the indices of the most important features
+    top_k_features_indices = torch.argsort(feature_top_k, descending=True)
+
+    # Select the data indexed by the important features
+    top_k_data = data[:, top_k_features_indices[:k]]
+    top_k_pca = torch.matmul(data_centered, top_k_components)
+
+    if is_pca:
+        return top_k_pca
+    elif is_both:
+        return top_k_data, top_k_pca
+    else:
+        return top_k_data
+
+def plt_scatter_alignment(X, k=2, is_pca=False, is_both=False):
+    if is_both:
+        x_reduced, x_reduced_pca = extract_top_k_features(X, k, is_both=True)
+        x1_reduced, x2_reduced = x_reduced.chunk(2)
+        x1_reduced_pca, x2_reduced_pca = x_reduced_pca.chunk(2)
+        fig, axs = plt.subplots(1, 2, figsize=(8, 4))
+        axs[0].set_title('Top K PCA')
+        axs[1].set_title('Top K Features')
+    elif is_pca:
+        x1_reduced, x2_reduced = extract_top_k_features(X, k, is_pca=True).chunk(2)
+        plt.set_title('Top K PCA')
+    else:
+        x1_reduced, x2_reduced = extract_top_k_features(X, k).chunk(2)
+        plt.set_title('Top K Features')
+
+    if is_both:
+        x1_reduced, x2_reduced = x1_reduced.detach().cpu().numpy(), x2_reduced.detach().cpu().numpy()
+        x1_reduced_pca, x2_reduced_pca = x1_reduced_pca.detach().cpu().numpy(), x2_reduced_pca.detach().cpu().numpy()
+        axs[0].scatter(x1_reduced[:, 0], x1_reduced[:, 1], c='r', marker='x')
+        axs[0].scatter(x2_reduced[:, 0], x2_reduced[:, 1], c='b', marker='+')
+        axs[1].scatter(x1_reduced_pca[:, 0], x1_reduced_pca[:, 1], c='r', marker='x')
+        axs[1].scatter(x2_reduced_pca[:, 0], x2_reduced_pca[:, 1], c='b', marker='+')
+    else:
+        x1_reduced, x2_reduced = x1_reduced.detach().cpu().numpy(), x2_reduced.detach().cpu().numpy()
+        plt.scatter(x1_reduced[:, 0], x1_reduced[:, 1], c='r', marker='x')
+        plt.scatter(x2_reduced[:, 0], x2_reduced[:, 1], c='b', marker='+')
+        
     return plt
