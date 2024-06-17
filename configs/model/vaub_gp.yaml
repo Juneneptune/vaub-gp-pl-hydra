@@ -33,9 +33,13 @@ optimizer_cls:
 
 vae1:
   _target_: src.models.components.vae_cnn.CNN_VAE
+  latent_height: 16
+  latent_width: 16
 
 vae2:
   _target_: src.models.components.vae_cnn.CNN_VAE
+  latent_height: 16
+  latent_width: 16
 
 score_prior:
   _target_: src.models.components.score_based_model.Score_fn
@@ -53,10 +57,12 @@ unet:
 
 classifier:
   _target_: src.models.components.classifier_net.CNN
+  input_height: 16
+  input_width: 16
 
-beta: 2
-gp_lambda: 5e-2
-cls_lambda: 10
+beta: 4
+gp_lambda: 1e-2
+cls_lambda: 0.001 
 is_vanilla: true
 loops: 1
 

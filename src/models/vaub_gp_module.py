@@ -105,8 +105,8 @@ class VAUBGPModule(LightningModule):
             optimizer_vae_2.zero_grad()
             optimizer_cls.zero_grad()
 
-            x, recon_x = [x1.view((x1.shape[0], -1)), x2.view((x1.shape[0], -1))], [recon_x1, recon_x2]
-            z = torch.vstack((z1, z2))
+            x, recon_x = [x1.view((x1.shape[0], -1)), x2.view((x2.shape[0], -1))], [recon_x1.view((x1.shape[0], -1)), recon_x2.view((x2.shape[0], -1))]
+            z = torch.vstack((z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))))
             mean, logvar = torch.vstack((mean1, mean2)), torch.vstack((logvar1, logvar2))
 
             # Score loss
@@ -122,7 +122,7 @@ class VAUBGPModule(LightningModule):
 
             gp_loss = calculate_gp_loss([x1.view((x1.shape[0], -1)), x2.view((x1.shape[0], -1))], [z1, z2])
 
-            output_cls = self.classifier(z1.view((z1.shape[0], 1, 16, 16)))
+            output_cls = self.classifier(z1)
             classifier_loss = F.cross_entropy(output_cls, label1, reduction='sum')
 
             tot_loss = vae_loss + self.hparams.gp_lambda*gp_loss + self.hparams.cls_lambda*classifier_loss
