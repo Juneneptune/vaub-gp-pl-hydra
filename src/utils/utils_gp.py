@@ -39,7 +39,8 @@ def pairwise_distances(x, y=None, is_norm=True):
         dist = dist - torch.diag(dist.diag())
     dist = torch.clamp(dist, 0.0, np.inf)
     if is_norm:
-        return nn.functional.normalize(dist, p=1, dim=1)
+        # return nn.functional.normalize(dist, p=float("inf"), dim=1)
+        return dist / dist.max()
     else:
         return dist
 
@@ -47,5 +48,5 @@ def pairwise_distances(x, y=None, is_norm=True):
 def calculate_gp_loss(X_list, Z_list):
     loss = 0
     for X, Z in zip(X_list, Z_list):
-        loss += torch.mean(torch.abs(pairwise_distances(X.detach())-pairwise_distances(Z, is_norm=False)))
+        loss += torch.mean(torch.abs(pairwise_distances(X.detach())-pairwise_distances(Z)))
     return loss

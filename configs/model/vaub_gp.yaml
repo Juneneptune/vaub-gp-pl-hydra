@@ -61,7 +61,7 @@ classifier:
   input_width: 16
 
 beta: 0.1
-gp_lambda: 50
+gp_lambda: 1
 cls_lambda: 1e-6
 is_vanilla: true
 loops: 1
