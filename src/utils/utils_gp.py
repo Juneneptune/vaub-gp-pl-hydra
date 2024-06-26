@@ -17,7 +17,7 @@ def compute_gp_loss(x, z, dist_func_x, dist_func_z):
     return loss/(batch_size-1)
 
 
-def pairwise_distances(x, y=None):
+def pairwise_distances(x, y=None, is_norm=True):
     '''
     Input: x is a Nxd matrix
     y is an optional Mxd matirx
@@ -37,11 +37,15 @@ def pairwise_distances(x, y=None):
         # Ensure diagonal is zero if x=y
     if y is None:
         dist = dist - torch.diag(dist.diag())
-    return torch.clamp(dist, 0.0, np.inf)
+    dist = torch.clamp(dist, 0.0, np.inf)
+    if is_no_norm:
+        return nn.functional.normalize(dist, p=1, dim=1)
+    else:
+        return dist
 
 
 def calculate_gp_loss(X_list, Z_list):
     loss = 0
     for X, Z in zip(X_list, Z_list):
-        loss += torch.sum(torch.abs(pairwise_distances(X)-pairwise_distances(Z)))
+        loss += torch.mean(torch.abs(pairwise_distances(X.detach())-pairwise_distances(Z, is_norm=False)))
     return loss

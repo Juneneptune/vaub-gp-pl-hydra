@@ -71,19 +71,30 @@ class VAUBGPModule(LightningModule):
         self.val_tgt_acc.reset()
 
     def vae_loss(self, recon_x, x, mean, logvar, beta=0.01, score=None, DSM=None):
-        if isinstance(recon_x, list) and isinstance(recon_x, list):
+        if isinstance(x, list) and isinstance(recon_x, list):
             for i in range(len(recon_x)):
                 if i == 0:
-                    recon_loss = nn.functional.mse_loss(recon_x[i], x[i], reduction='sum')
+                    recon_loss = nn.functional.mse_loss(recon_x[i], x[i], reduction='none').mean()
                 else:
-                    recon_loss += nn.functional.mse_loss(recon_x[i], x[i], reduction='sum')
+                    recon_loss += nn.functional.mse_loss(recon_x[i], x[i], reduction='none').mean()
         else:
-            recon_loss = nn.functional.mse_loss(recon_x, x, reduction='sum')
-        kld_encoder_posterior = 0.5 * torch.sum(- 1 - logvar)
-        kld_prior = 0.5 * torch.sum(mean.pow(2) + logvar.exp())
+            recon_loss = nn.functional.mse_loss(recon_x, x, reduction='none').mean()
+        # if isinstance(recon_x, list) and isinstance(recon_x, list):
+        #     for i in range(len(recon_x)):
+        #         if i == 0:
+        #             recon_loss = nn.functional.mse_loss(recon_x[i], x[i], reduction='sum')
+        #         else:
+        #             recon_loss += nn.functional.mse_loss(recon_x[i], x[i], reduction='sum')
+        # else:
+        #     recon_loss = nn.functional.mse_loss(recon_x, x, reduction='sum')
+        # kld_encoder_posterior = 0.5 * torch.sum(- 1 - logvar)
+        # kld_prior = 0.5 * torch.sum(mean.pow(2) + logvar.exp())
+        kld_encoder_posterior = 0.5 * torch.mean(- 1 - logvar)
+        kld_prior = 0.5 * torch.mean(mean.pow(2) + logvar.exp())
         kld_loss = kld_encoder_posterior + kld_prior
         if score is not None and DSM is None:
             kld_loss = kld_encoder_posterior - score
+            kld_prior = -score
         elif DSM is not None:
             kld_loss = kld_encoder_posterior + DSM
         return recon_loss + beta * kld_loss, recon_loss, kld_encoder_posterior, kld_prior
@@ -113,17 +124,19 @@ class VAUBGPModule(LightningModule):
             score = self.score_model.get_mixing_score_fn(z, 30 * torch.ones(z.shape[0], device=z.device).type(torch.long),
                                                     detach=True, is_residual=True, is_vanilla=self.hparams.is_vanilla,
                                                     alpha=None) - 0.05 * z
-            score = torch.matmul(score.unsqueeze(1), z.unsqueeze(-1)).sum()
+            # score = torch.matmul(score.unsqueeze(1), z.unsqueeze(-1)).sum()
+            score = torch.matmul(score.unsqueeze(1), z.unsqueeze(-1)).sum() / (z.shape[0] * z.shape[1])
 
             # VAE loss
             vae_loss, recon_loss, kld_encoder_posterior, kld_prior = self.vae_loss(recon_x, x, mean, logvar,
                                                                                    self.hparams.beta,
                                                                                    score=score, DSM=None)
 
+            # gp_loss = calculate_gp_loss([x1.view((x1.shape[0], -1)), x2.view((x1.shape[0], -1))], [z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))])
             gp_loss = calculate_gp_loss([x1.view((x1.shape[0], -1)), x2.view((x1.shape[0], -1))], [z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))])
 
             output_cls = self.classifier(z1)
-            classifier_loss = F.cross_entropy(output_cls, label1, reduction='sum')
+            classifier_loss = F.cross_entropy(output_cls, label1, reduction='sum').mean()
 
             tot_loss = vae_loss + self.hparams.gp_lambda*gp_loss + self.hparams.cls_lambda*classifier_loss
 
@@ -137,6 +150,7 @@ class VAUBGPModule(LightningModule):
             self.log("loss/vae_loss", vae_loss, on_step=True, on_epoch=False, sync_dist=True)
             self.log("loss/classifier_loss", classifier_loss, on_step=True, on_epoch=False, sync_dist=True)
 
+            self.log("loss_detail/gp_loss", gp_loss, on_step=True, on_epoch=False, sync_dist=True)
             self.log("loss_detail/recon_loss", recon_loss, on_step=True, on_epoch=False, sync_dist=True)
             self.log("loss_detail/kld_encoder_posterior", kld_encoder_posterior, on_step=True, on_epoch=False, sync_dist=True)
             self.log("loss_detail/kld_prior", kld_prior, on_step=True, on_epoch=False, sync_dist=True)

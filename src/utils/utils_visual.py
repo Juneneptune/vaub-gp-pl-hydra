@@ -105,8 +105,8 @@ def plt_scatter_alignment(X, k=2, is_pca=False, is_both=False):
         x1_reduced, x2_reduced = x_reduced.chunk(2)
         x1_reduced_pca, x2_reduced_pca = x_reduced_pca.chunk(2)
         fig, axs = plt.subplots(1, 2, figsize=(8, 4))
-        axs[0].set_title('Top K PCA')
-        axs[1].set_title('Top K Features')
+        axs[0].set_title('Top K Features')
+        axs[1].set_title('Top K PCA')
     elif is_pca:
         x1_reduced, x2_reduced = extract_top_k_features(X, k, is_pca=True).chunk(2)
         plt.set_title('Top K PCA')

@@ -21,7 +21,7 @@ optimizer_score:
 optimizer_cls:
   _target_: torch.optim.Adam
   _partial_: true
-  lr: 1e-5
+  lr: 1e-4
   weight_decay: 0.0
 
 #scheduler:
@@ -45,7 +45,7 @@ score_prior:
   _target_: src.models.components.score_based_model.Score_fn
   _partial_: true
   sigma_min: 0.01
-  sigma_max: 0.04
+  sigma_max: 0.4
   num_timesteps: 100
 
 unet:
@@ -60,9 +60,9 @@ classifier:
   input_height: 16
   input_width: 16
 
-beta: 2
-gp_lambda: 1e-2
-cls_lambda: 0.001 
+beta: 0.1
+gp_lambda: 50
+cls_lambda: 1e-6
 is_vanilla: true
 loops: 1
 
