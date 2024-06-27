@@ -39,8 +39,8 @@ def pairwise_distances(x, y=None, is_norm=True):
         dist = dist - torch.diag(dist.diag())
     dist = torch.clamp(dist, 0.0, np.inf)
     if is_norm:
-        # return nn.functional.normalize(dist, p=float("inf"), dim=1)
-        return dist / dist.max()
+        return nn.functional.normalize(dist, p=1, dim=1)
+        # return dist / dist.max()
     else:
         return dist
 

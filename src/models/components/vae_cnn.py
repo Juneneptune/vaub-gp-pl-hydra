@@ -23,7 +23,10 @@ class ResConvEncoder(nn.Module):
     def __init__(self, latent_size=64, type_of_dataset='mnist'):
         super(ResConvEncoder, self).__init__()
         self.latent_size = latent_size
-        self.conv1 = nn.Conv2d(1, 16, 4, 2, 1)  # (batch_size, 32, 14, 14)
+        if is_svhn:
+            self.conv1 = nn.Conv2d(3, 16, 4, 2, 1)
+        else:
+            self.conv1 = nn.Conv2d(1, 16, 4, 2, 1)  # (batch_size, 32, 14, 14)
         self.res1 = ResidualBlockVAE(16, 16)
         self.conv2 = nn.Conv2d(16, 64, 4, 2, 1)  # (batch_size, 64, 7, 7)
         self.res2 = ResidualBlockVAE(64, 64)
@@ -62,7 +65,7 @@ class ResConvDecoder(nn.Module):
         self.conv2 = nn.ConvTranspose2d(64, 16, 4, 2, 1)  # (batch_size, 32, 8, 8)
         self.res3 = ResidualBlockVAE(16, 16)
         if type_of_dataset=='svhn':
-            self.conv3 = nn.ConvTranspose2d(16, 1, 4, 4, 0)
+            self.conv3 = nn.ConvTranspose2d(16, 3, 4, 4, 0)
         elif type_of_dataset=='mnist':
             self.conv3 = nn.ConvTranspose2d(16, 1, 4, 4, 2) 
         elif type_of_dataset=='usps':

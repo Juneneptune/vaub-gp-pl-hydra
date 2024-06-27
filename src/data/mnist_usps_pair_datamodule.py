@@ -3,27 +3,14 @@ from typing import Any, Dict, Optional, Tuple
 import torch
 from lightning import LightningDataModule
 from torch.utils.data import ConcatDataset, DataLoader, Dataset, random_split
-from torchvision.datasets import MNIST
+from torchvision.datasets import MNIST, USPS
 from torchvision.transforms import v2
 
 import numpy as np
 
 
-class InvertPixelTransform(object):
-    def __call__(self, image):
-        # Ensure image is a PyTorch tensor and within the valid range [0, 1]
-        if not isinstance(image, torch.Tensor):
-            raise ValueError("Expected input image to be a PyTorch tensor.")
-        if image.min() < 0 or image.max() > 1:
-            raise ValueError("Image pixel values should be in the range [0, 1].")
-
-        # Invert the pixel values (1 - value)
-        inverted_image = 1.0 - image
-        return inverted_image
-
-
 class PairedImageDataset(Dataset):
-    def __init__(self, dataset1, dataset2, counter):
+    def __init__(self, dataset1:Dataset, dataset2:Dataset, counter:int):
         self.dataset1 = dataset1
         self.dataset2 = dataset2
 
@@ -50,13 +37,12 @@ class PairedImageDataset(Dataset):
         return idx, dataset1, dataset2
 
 
-class FlipRotMNISTPairModule(LightningDataModule):
+class MNISTUSPSPairModule(LightningDataModule):
 
     def __init__(
         self,
         data_dir: str = "data/",
         batch_size: int = 64,
-        rot_angle: int = 0,
         num_workers: int = 0,
         pin_memory: bool = False,
         train_val_split: Tuple[float, float] = (0.9, 0.1),
@@ -69,24 +55,20 @@ class FlipRotMNISTPairModule(LightningDataModule):
         self.save_hyperparameters(logger=False)
 
         # data transformations
-        self.transform_ori = v2.Compose([
-            v2.ToTensor(),
+        self.transform = v2.Compose([
+            v2.ToImage(),
+            v2.ToDtype(torch.float32, scale=True),
+            v2.Resize(32,32)
         ])
 
-        self.transform_rot_invert = v2.Compose([
-            v2.ToTensor(),
-            v2.RandomRotation(degrees=(rot_angle, rot_angle)),
-            InvertPixelTransform(),
-        ])
+        self.train_set_mnist: Optional[Dataset] = None
+        self.val_set_mnist: Optional[Dataset] = None
 
-        self.train_set_ori: Optional[Dataset] = None
-        self.val_set_ori: Optional[Dataset] = None
+        self.train_set_usps: Optional[Dataset] = None
+        self.val_set_usps: Optional[Dataset] = None
 
-        self.train_set_rot_flip: Optional[Dataset] = None
-        self.val_set_rot_flip: Optional[Dataset] = None
-
-        self.test_set_ori: Optional[Dataset] = None
-        self.test_set_rot_flip: Optional[Dataset] = None
+        self.test_set_mnist: Optional[Dataset] = None
+        self.test_set_usps: Optional[Dataset] = None
 
         self.batch_size_per_device = batch_size
 
@@ -112,6 +94,8 @@ class FlipRotMNISTPairModule(LightningDataModule):
         """
         MNIST(self.hparams.data_dir, train=True, download=True)
         MNIST(self.hparams.data_dir, train=False, download=True)
+        USPS(self.hparams.data_dir, train=True, download=True)
+        USPS(self.hparams.data_dir, train=False, download=True)
 
     def setup(self, stage: Optional[str] = None) -> None:
         """Load data. Set variables: `self.data_train`, `self.data_val`, `self.data_test`.
@@ -132,21 +116,21 @@ class FlipRotMNISTPairModule(LightningDataModule):
             self.batch_size_per_device = self.hparams.batch_size // self.trainer.world_size
 
         # load and split datasets only if not loaded already
-        if not self.test_set_ori and not self.train_set_ori and not self.val_set_ori:
-            train_val_set_ori = MNIST(self.hparams.data_dir, train=True, transform=self.transform_ori)
-            train_val_set_rot_flip = MNIST(self.hparams.data_dir, train=True, transform=self.transform_rot_invert)
+        if not self.test_set_mnist and not self.train_set_mnist and not self.val_set_mnist:
+            train_val_set_mnist = MNIST(self.hparams.data_dir, train=True, transform=self.transform)
+            train_val_set_usps = USPS(self.hparams.data_dir, train=True, transform=self.transform)
 
-            self.test_set_ori = MNIST(self.hparams.data_dir, train=False, transform=self.transform_ori)
-            self.test_set_rot_flip = MNIST(self.hparams.data_dir, train=False, transform=self.transform_rot_invert)
+            self.test_set_mnist = MNIST(self.hparams.data_dir, train=False, transform=self.transform)
+            self.test_set_usps = USPS(self.hparams.data_dir, train=False, transform=self.transform)
 
-            self.train_set_ori, self.val_set_ori = random_split(
-                dataset=train_val_set_ori,
+            self.train_set_mnist, self.val_set_mnist = random_split(
+                dataset=train_val_set_mnist,
                 lengths=self.hparams.train_val_split,
                 generator=torch.Generator().manual_seed(42),
             )
 
-            self.train_set_rot_flip, self.val_set_rot_flip = random_split(
-                dataset=train_val_set_rot_flip,
+            self.train_set_usps, self.val_set_usps = random_split(
+                dataset=train_val_set_usps,
                 lengths=self.hparams.train_val_split,
                 generator=torch.Generator().manual_seed(42),
             )
@@ -157,14 +141,13 @@ class FlipRotMNISTPairModule(LightningDataModule):
         :return: The train dataloader.
         """
         self.counter += 1
-        train_set_paired = PairedImageDataset(self.train_set_ori, self.train_set_rot_flip, self.counter)
+        train_set_paired = PairedImageDataset(self.train_set_mnist, self.train_set_usps, self.counter)
         return DataLoader(
             dataset=train_set_paired,
             batch_size=self.batch_size_per_device,
             num_workers=self.hparams.num_workers,
             pin_memory=self.hparams.pin_memory,
             shuffle=True,
-            drop_last=True
         )
 
     def val_dataloader(self) -> DataLoader[Any]:
@@ -172,7 +155,7 @@ class FlipRotMNISTPairModule(LightningDataModule):
 
         :return: The validation dataloader.
         """
-        val_set_paired = PairedImageDataset(self.val_set_ori, self.val_set_rot_flip, 0)
+        val_set_paired = PairedImageDataset(self.val_set_mnist, self.val_set_usps, 0)
         return DataLoader(
             dataset=val_set_paired,
             batch_size=self.batch_size_per_device,
@@ -186,7 +169,7 @@ class FlipRotMNISTPairModule(LightningDataModule):
 
         :return: The test dataloader.
         """
-        train_set_paired = PairedImageDataset(self.test_set_ori, self.test_set_rot_flip, 0)
+        train_set_paired = PairedImageDataset(self.test_set_mnist, self.test_set_usps, 0)
         return DataLoader(
             dataset=train_set_paired,
             batch_size=self.batch_size_per_device,
@@ -221,4 +204,4 @@ class FlipRotMNISTPairModule(LightningDataModule):
 
 
 if __name__ == "__main__":
-    _ = FlipRotMNISTPairModule()
+    _ = MNISTUSPSPairModule()
