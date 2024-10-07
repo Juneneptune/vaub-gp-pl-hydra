@@ -34,7 +34,7 @@ optimizer_cls:
 vae1:
   _target_: src.models.components.vae_res_cnn.ResConvVAE
   type_of_dataset: "mnist"
-  logvar_constraint: "sigmoid"
+  logvar_constraint: "clamp"
   is_2d: false
   is_3d: false
   _partial_: true
@@ -42,7 +42,7 @@ vae1:
 vae2:
   _target_: src.models.components.vae_res_cnn.ResConvVAE
   type_of_dataset: "mnist"
-  logvar_constraint: "sigmoid"
+  logvar_constraint: "clamp"
   is_2d: false
   is_3d: false
   _partial_: true
@@ -60,7 +60,7 @@ unet:
   _partial_: true
   num_timesteps: 100
   embedding_dim: 2
-  num_latent_noise_scale: 50
+  num_latent_noise_scale: 1
   is_add_latent_noise: false
   multiplier: 4
   is_warm_init: false
@@ -84,13 +84,14 @@ gp:
 
 
 vaub_lambda: 1
-gp_lambda: 0.03
+gp_lambda: 0
 recon_lambda: 1
+var_lambda: 0.00
 
 min_noise_scale: 0
 max_noise_scale: 0
 num_latent_noise_scale: 1
-init_scale: 0.1
+init_scale: 0.03
 
 latent_dim: 100
 latent_row_dim: 10
@@ -100,8 +101,10 @@ block_size: 4096
 cls_lambda: 1e-3
 is_vanilla: true
 loops: 1
-warm_score_epochs: 50
+warm_score_epochs: 0
 gather_z: false
 
 # compile model for faster training with pytorch 2.0
 compile: false
+is_MoG_prior: True
+is_warm_init: False

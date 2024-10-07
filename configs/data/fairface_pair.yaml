@@ -1,0 +1,9 @@
+_target_: src.data.unpaired_enc_precomputed_datamodule.UnpairedEncPrecomputeModule
+data_dir: ${paths.data_dir}
+batch_size: 800 # Needs to be divisible by the number of devices (e.g., if in a distributed setup)
+num_workers: 16
+pin_memory: False
+src_train_file: "encoded_FairFace/encoded_FairFace_train_gender_0_ViT-H-14-378-quickgelu_dfn5b_64.pth"
+tgt_train_file: "encoded_FairFace/encoded_FairFace_train_gender_1_ViT-H-14-378-quickgelu_dfn5b_64.pth"
+src_test_file: "encoded_FairFace/encoded_FairFace_test_gender_0_ViT-H-14-378-quickgelu_dfn5b_64.pth"
+tgt_test_file: "encoded_FairFace/encoded_FairFace_test_gender_1_ViT-H-14-378-quickgelu_dfn5b_64.pth"

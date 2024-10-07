@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 
 from ..utils.utils_gp import calculate_gp_loss
 from ..utils.utils_visual import display_reconstructed_and_flip_images, display_umap_for_latent
+from .components.MoG_prior import MoGNN, kl_divergence_with_pz
+
 
 class VAUBGPModule(LightningModule):
 
@@ -29,6 +31,7 @@ class VAUBGPModule(LightningModule):
         optimizer_cls: torch.optim.Optimizer,
         # scheduler: torch.optim.lr_scheduler,
         vaub_lambda: float,
+        var_lambda: float,
         gp_lambda: float,
         recon_lambda: float,
         block_size: int,
@@ -45,6 +48,8 @@ class VAUBGPModule(LightningModule):
         num_latent_noise_scale: int,
         warm_score_epochs: int,
         init_scale: float,
+        is_MoG_prior: bool,
+        is_warm_init: bool,
     ) -> None:
 
         super().__init__()
@@ -58,8 +63,9 @@ class VAUBGPModule(LightningModule):
         self.src_vae = vae1(latent_height=latent_row_dim, latent_width=latent_col_dim)
         self.tgt_vae = vae2(latent_height=latent_row_dim, latent_width=latent_col_dim)
 
-        self.src_vae.init_weights_fixed(init_scale=init_scale)
-        self.tgt_vae.init_weights_fixed(init_scale=init_scale)
+        if is_warm_init:
+            self.src_vae.init_weights_fixed(init_scale=init_scale)
+            self.tgt_vae.init_weights_fixed(init_scale=init_scale)
 
         self.classifier = classifier(input_dim=latent_dim)
         self.score_model = score_prior(model=unet(in_dim=latent_dim,
@@ -69,7 +75,8 @@ class VAUBGPModule(LightningModule):
         self.gp_model = gp(device=self.device)
 
         # metric objects for calculating and averaging accuracy across batches
-        self.train_acc = Accuracy(task="multiclass", num_classes=10)
+        self.train_src_acc = Accuracy(task="multiclass", num_classes=10)
+        self.train_tgt_acc = Accuracy(task="multiclass", num_classes=10)
         self.val_src_acc = Accuracy(task="multiclass", num_classes=10)
         self.val_tgt_acc = Accuracy(task="multiclass", num_classes=10)
         self.test_src_acc = Accuracy(task="multiclass", num_classes=10)
@@ -81,6 +88,14 @@ class VAUBGPModule(LightningModule):
         # precompute the weighting list for latent noise scale
         self.weighting_list = torch.linspace(1, 1, num_latent_noise_scale)
         self.latent_noise_scale_list = torch.linspace(min_noise_scale, max_noise_scale, num_latent_noise_scale)
+
+        # MoG prior for VAUB
+        if is_MoG_prior:
+            self.is_MoG_prior = is_MoG_prior
+            self.prior = MoGNN(n_components=1, input_dim=latent_dim)
+            print("Prior is set tp mixture of Gaussians")
+        else:
+            self.is_MoG_prior = False
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Perform a forward pass through the model `self.net`.
@@ -171,13 +186,18 @@ class VAUBGPModule(LightningModule):
         # with torch.autograd.detect_anomaly(True):
 
         _, (x1, x1_encoded, label1), (x2, x2_encoded, label2) = batch
-        optimizer_vae_1, optimizer_vae_2, optimizer_score, optimizer_cls = self.optimizers()
+        if self.is_MoG_prior:
+            optimizer_vae_1, optimizer_vae_2, optimizer_score, optimizer_cls, optimizer_prior = self.optimizers()
+        else:
+            optimizer_vae_1, optimizer_vae_2, optimizer_score, optimizer_cls = self.optimizers()
 
         self.src_vae.train()
         self.tgt_vae.train()
 
         recon_x1, z1, mean1, logvar1 = self.src_vae(x1)
         recon_x2, z2, mean2, logvar2 = self.tgt_vae(x2)
+
+        var = self.hparams.var_lambda * (logvar1.exp().mean() + logvar2.exp().mean())
 
         x = [x1.view((x1.shape[0], -1)), x2.view((x2.shape[0], -1))]
         recon_x = [recon_x1.view((x1.shape[0], -1)), recon_x2.view((x2.shape[0], -1))]
@@ -192,29 +212,41 @@ class VAUBGPModule(LightningModule):
 
         # update per loops
         if (((self.global_step % self.hparams.loops) == 0) and
-                (self.current_epoch > self.hparams.warm_score_epochs)):
+                (self.current_epoch >= self.hparams.warm_score_epochs)):
 
             optimizer_vae_1.zero_grad()
             optimizer_vae_2.zero_grad()
             optimizer_cls.zero_grad()
+            if self.is_MoG_prior:
+                optimizer_prior.zero_grad()
 
             # Score loss
             score = self.score_model.get_mixing_score_fn(
-                z, 30*torch.ones(z.shape[0], device=z.device).type(torch.long),
+                z, 1*torch.ones(z.shape[0], device=z.device).type(torch.long),
                 latent_noise_idx.type(torch.long), detach=True, is_residual=True,
                 is_vanilla=self.hparams.is_vanilla,
                 alpha=None) - 0.05 * z
 
             # score = torch.matmul(score.unsqueeze(1), z.unsqueeze(-1)).sum()/z.shape[0]
-            score = torch.matmul(score.unsqueeze(1), z.unsqueeze(-1)).sum() / (z.shape[0] * z.shape[1])
-            vaub_loss, recon_loss, kld_encoder_posterior, _, kld_loss = self.vae_loss_lambda(recon_x, x, mean, logvar,
-                                                                                            score=score, DSM=None,
-                                                                                            weighting=None)
+            if not self.is_MoG_prior:
+                score = torch.matmul(score.view((score.shape[0], -1)).unsqueeze(1), z.unsqueeze(-1)).sum() / (z.shape[0] * z.shape[1])
+                vaub_loss, recon_loss, kld_encoder_posterior, _, kld_loss = self.vae_loss_lambda(recon_x, x, mean, logvar,
+                                                                                                score=score, DSM=None,
+                                                                                                weighting=None)
+            else:
+                score = torch.matmul(score.view((score.shape[0], -1)).unsqueeze(1), z.unsqueeze(-1)).sum() / (z.shape[0] * z.shape[1])
+                vaub_loss, recon_loss, kld_encoder_posterior, _, kld_loss = self.vae_loss_lambda(recon_x, x, mean, logvar,
+                                                                                                score=None, DSM=None,
+                                                                                                weighting=None)
+                kld_loss = kl_divergence_with_pz(self.prior, z, mean.view((mean.shape[0], -1)), logvar.view((logvar.shape[0], -1)))
+                vaub_loss = recon_loss + kld_loss
+                
             vaub_loss = self.hparams.vaub_lambda * vaub_loss
             recon_loss = self.hparams.recon_lambda * recon_loss
 
             # CLS loss
             output_cls = self.classifier(mean1.view((z1.shape[0], -1)).detach())
+            output_tgt = self.classifier(mean2.view((z2.shape[0], -1)).detach())
             # output_cls = self.classifier(z1)
             classifier_loss = F.cross_entropy(output_cls, label1, reduction='none').mean()
 
@@ -227,7 +259,7 @@ class VAUBGPModule(LightningModule):
             # gp_loss = calculate_gp_loss([x1.view((x1.shape[0], -1)), x2.view((x1.shape[0], -1))],
             #                             [z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))])
 
-            tot_loss = vaub_loss + recon_loss + gp_loss
+            tot_loss = vaub_loss + recon_loss + gp_loss + var
 
             # print(f"tot_loss: {tot_loss:.2f}")
             # print(f"vae_loss: {vae_loss:.2f}")
@@ -239,6 +271,8 @@ class VAUBGPModule(LightningModule):
             optimizer_vae_1.step()
             optimizer_vae_2.step()
             optimizer_cls.step()
+            if self.is_MoG_prior:
+                optimizer_prior.step()
 
             # update and log metrics per batch
             self.log("loss/tot_loss", tot_loss, on_step=True, on_epoch=False, sync_dist=True)
@@ -254,8 +288,10 @@ class VAUBGPModule(LightningModule):
             self.log("latent_space/var_src", logvar1.exp().mean(), on_step=True, on_epoch=False, sync_dist=True)
             self.log("latent_space/var_tgt", logvar2.exp().mean(), on_step=True, on_epoch=False, sync_dist=True)
 
-            self.train_acc(output_cls, label1)
-            self.log("train/acc", self.train_acc, on_step=True, on_epoch=False, sync_dist=True)
+            self.train_src_acc(output_cls, label1)
+            self.train_tgt_acc(output_tgt, label2)
+            self.log("train/src_acc", self.train_src_acc, on_step=True, on_epoch=False, sync_dist=True)
+            self.log("train/tgt_acc", self.train_tgt_acc, on_step=True, on_epoch=False, sync_dist=True)
             self.train_loss(tot_loss)
 
         latent_noise_idx = torch.randint(0, self.hparams.num_latent_noise_scale, (2 * batch_size,))
@@ -290,14 +326,17 @@ class VAUBGPModule(LightningModule):
             z = torch.vstack((z1.view((z1.shape[0], -1)), z2.view((z2.shape[0], -1))))
 
         # update the score model
-        dsm_loss = self.score_model.update_score_fn(z,
-                                                    latent_noise_idx=latent_noise_idx,
-                                                    optimizer=optimizer_score,
-                                                    max_timestep=None,
-                                                    is_mixing=True,
-                                                    is_residual=True,
-                                                    is_vanilla=self.hparams.is_vanilla,
-                                                    alpha=None)
+        if not self.is_MoG_prior:
+            dsm_loss = self.score_model.update_score_fn(z,
+                                                        latent_noise_idx=latent_noise_idx,
+                                                        optimizer=optimizer_score,
+                                                        max_timestep=None,
+                                                        is_mixing=True,
+                                                        is_residual=True,
+                                                        is_vanilla=self.hparams.is_vanilla,
+                                                        alpha=None)
+        else:
+            dsm_loss = 0
 
         # print(f"dsm_loss: {dsm_loss:.2f}")
 
@@ -444,6 +483,8 @@ class VAUBGPModule(LightningModule):
         """
         optimizer_vae_1 = self.hparams.optimizer_vae_1(params=self.src_vae.parameters())
         optimizer_vae_2 = self.hparams.optimizer_vae_2(params=self.tgt_vae.parameters())
+        if self.is_MoG_prior:
+            optimizer_prior = self.hparams.optimizer_score(params=self.prior.parameters())
         optimizer_score = self.hparams.optimizer_score(params=self.score_model.parameters())
         optimizer_cls = self.hparams.optimizer_cls(params=self.classifier.parameters())
 
@@ -458,6 +499,8 @@ class VAUBGPModule(LightningModule):
         #             "frequency": 1,
         #         },
         #     }
-
-        return [optimizer_vae_1, optimizer_vae_2, optimizer_score, optimizer_cls], []
+        if self.is_MoG_prior:
+            return [optimizer_vae_1, optimizer_vae_2, optimizer_score, optimizer_cls, optimizer_prior], []
+        else:
+            return [optimizer_vae_1, optimizer_vae_2, optimizer_score, optimizer_cls], []
 

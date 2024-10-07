@@ -1,0 +1,9 @@
+_target_: src.data.unpaired_enc_precomputed_datamodule.UnpairedEncPrecomputeModule
+data_dir: ${paths.data_dir}
+batch_size: 4096 # Needs to be divisible by the number of devices (e.g., if in a distributed setup)
+num_workers: 16
+pin_memory: False
+src_train_file: "encoded_mnistm/encoded_mnistm_test_ViT-H-14-378-quickgelu_dfn5b_28.pth"
+tgt_train_file: "encoded_mnist/encoded_mnist_train_ViT-L-14_commonpool_xl_s13b_b90k_28.pth"
+src_test_file: "encoded_mnistm/encoded_mnistm_train_ViT-H-14-378-quickgelu_dfn5b_28.pth"
+tgt_test_file: "encoded_mnist/encoded_mnist_test_ViT-L-14_commonpool_xl_s13b_b90k_28.pth"

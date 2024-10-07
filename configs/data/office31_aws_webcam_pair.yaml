@@ -1,0 +1,10 @@
+_target_: src.data.unpaired_enc_precomputed_datamodule.UnpairedEncPrecomputeModule
+data_dir: ${paths.data_dir}
+batch_size: 500 # Needs to be divisible by the number of devices (e.g., if in a distributed setup)
+num_workers: 16
+num_classes: 31
+pin_memory: False
+src_train_file: "encoded_office31/encoded_office31_train_amazon_ViT-H-14-378-quickgelu_dfn5b_64.pth"
+tgt_train_file: "encoded_office31/encoded_office31_train_webcam_ViT-H-14-378-quickgelu_dfn5b_64.pth"
+src_test_file: "encoded_office31/encoded_office31_test_amazon_ViT-H-14-378-quickgelu_dfn5b_64.pth"
+tgt_test_file: "encoded_office31/encoded_office31_test_webcam_ViT-H-14-378-quickgelu_dfn5b_64.pth"

@@ -80,10 +80,10 @@ class ResConvEncoder(nn.Module):
         elif not is_2d and is_3d:
             self.lin = nn.Linear(128, 6)
             self.bn2 = nn.BatchNorm1d(3, affine=False)
-        if type_of_dataset == 'svhn':
-            self.res_SVHN1 = ResidualBlockVAE(64, 64)
-            self.res_SVHN2 = ResidualBlockVAE(64, 64)
-            self.conv3 = nn.Conv2d(64, 2 * latent_size, 4, 2, 1)
+        if type_of_dataset == 'mnist-m':
+            self.res_m1 = ResidualBlockVAE(64, 64)
+            self.res_m2 = ResidualBlockVAE(64, 64)
+            self.conv3 = nn.Conv2d(64, 2 * latent_size, 3, 2, 1)
             self.conv1 = nn.Conv2d(3, 16, 4, 2, 1)
         elif type_of_dataset == 'mnist':
             self.conv3 = nn.Conv2d(64, 2 * latent_size, 3, 2, 1)  # (batch_size, 128, 4, 4)
@@ -102,9 +102,9 @@ class ResConvEncoder(nn.Module):
         x = self.res1(x)
         x = F.relu(self.conv2(x))
         x = self.res2(x)
-        if self.type_of_dataset == 'svhn':
-            x = self.res_SVHN1(x)
-            x = self.res_SVHN2(x)
+        if self.type_of_dataset == 'mnist-m':
+            x = self.res_m1(x)
+            x = self.res_m2(x)
         x = F.relu(self.conv3(x))
         x = self.res3(x)
         x = self.conv4(x).view(x.shape[0], -1)  # (batch_size, latent_size)
@@ -153,10 +153,10 @@ class ResConvDecoder(nn.Module):
             self.lin = nn.Linear(2, 64)
         elif not is_2d and is_3d:
             self.lin = nn.Linear(3, 64)
-        if type_of_dataset == 'svhn':
-            self.res_SVHN1 = ResidualBlockVAE(64, 64)
-            self.res_SVHN2 = ResidualBlockVAE(64, 64)
-            self.conv3 = nn.ConvTranspose2d(16, 3, 4, 4, 0)
+        if type_of_dataset == 'mnist-m':
+            self.res_m1 = ResidualBlockVAE(64, 64)
+            self.res_m2 = ResidualBlockVAE(64, 64)
+            self.conv3 = nn.ConvTranspose2d(16, 3, 4, 4, 2)
         elif type_of_dataset == 'mnist':
             self.conv3 = nn.ConvTranspose2d(16, 1, 4, 4, 2)
         elif type_of_dataset == 'usps':
@@ -169,9 +169,9 @@ class ResConvDecoder(nn.Module):
         x = self.res1(x)
         x = F.relu(self.conv1(x))
         x = self.res2(x)
-        if self.type_of_dataset == 'svhn':
-            x = self.res_SVHN1(x)
-            x = self.res_SVHN2(x)
+        if self.type_of_dataset == 'minst-m':
+            x = self.res_m1(x)
+            x = self.res_m2(x)
         x = F.relu(self.conv2(x))
         x = self.res3(x)
         x = torch.sigmoid(self.conv3(x))  # Sigmoid activation for binary image

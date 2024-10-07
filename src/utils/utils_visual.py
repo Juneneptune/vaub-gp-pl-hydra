@@ -6,6 +6,7 @@ import seaborn as sns
 import umap
 import pandas as pd
 import matplotlib.colors as mcolors
+import math
 
 # Function to display reconstructed images
 def display_reconstructed_images(epoch, vae_model, data, n_samples=10, dim=[1, 28, 28], is_flip=False):
@@ -197,6 +198,81 @@ def display_umap_for_latent_old(epoch, vae_1, vae_2, data_1, data_2, label_1, la
 
     return plt
 
+def display_umap_for_latent_dynamic(axes_total, axes_individual, epoch, vae_1, vae_2, data_1, data_2, label_1, label_2):
+    vae_1.eval()
+    vae_2.eval()
+    with torch.no_grad():
+        _, z1, _, _ = vae_1(data_1)
+        _, z2, _, _ = vae_2(data_2)
+
+        # flatten the data
+        z1 = z1.view(z1.shape[0], -1)
+        z2 = z2.view(z2.shape[0], -1)
+
+        # Combine the datasets
+        data = np.vstack((z1.cpu(), z2.cpu()))
+        labels = np.concatenate((label_1.cpu(), label_2.cpu()))
+        domains = np.concatenate((['domain1'] * len(z1.cpu()), ['domain2'] * len(z2.cpu())))
+
+        # Fit and transform the data using UMAP
+        reducer = umap.UMAP()
+        embedding = reducer.fit_transform(data)
+
+        # Create a DataFrame for easier handling
+        df = pd.DataFrame(embedding, columns=['UMAP1', 'UMAP2'])
+        df['label'] = labels
+        df['domain'] = domains
+
+        # Define markers and colors
+        colors = {'domain1': 'b', 'domain2': 'r'}
+        unique_labels = np.unique(labels)
+        palette = sns.color_palette("hsv", len(unique_labels))
+        color_map = {label: palette[i] for i, label in enumerate(unique_labels)}
+
+        # Plot the data
+        for domain in colors:
+            subset = df[(df['domain'] == domain)]
+            axes_total[1].scatter(subset['UMAP1'], subset['UMAP2'], c=[colors[domain]], marker="s",
+                            alpha=0.6,
+                            edgecolors='w', linewidth=0.5, label=f'{domain}')
+
+        axes_total[1].set_title(f'UMAP Visualization of Latent Space by Domain at {epoch}')
+
+        # Define markers and colors
+        markers = {'domain1': 'X', 'domain2': 's'}
+        palette = sns.color_palette("tab10", len(unique_labels))
+        color_map = {label: palette[i] for i, label in enumerate(unique_labels)}
+
+        # Plot the data
+        for domain in markers:
+            for label in unique_labels:
+                subset = df[(df['domain'] == domain) & (df['label'] == label)]
+                axes_total[0].scatter(subset['UMAP1'], subset['UMAP2'], c=[color_map[label]], marker=markers[domain], alpha=0.6,
+                           edgecolors='w', linewidth=0.5, label=f'{domain}-{label}')
+
+        axes_total[0].set_title(f'UMAP Visualization of Latent Space by Label at {epoch}')
+
+        # Update the subplot grid for individual plots
+        num_labels = len(unique_labels)
+        num_cols = 5  # You want 5 columns
+        num_rows = math.ceil(num_labels / num_cols)  # Dynamically calculate the required rows
+
+        fig, axes_individual = plt.subplots(num_rows, num_cols, figsize=(num_cols * 4, num_rows * 4))
+
+        count = 0
+        for label in unique_labels:
+            for domain in markers:
+                subset = df[(df['domain'] == domain) & (df['label'] == label)]
+                row, col = divmod(count, num_cols)  # Calculate row and column index
+                if row < num_rows:  # Ensure we stay within the bounds of the grid
+                    axes_individual[row, col].scatter(subset['UMAP1'], subset['UMAP2'], c=colors[domain], alpha=0.6,
+                               edgecolors='w', linewidth=0.5, label=f'{domain}-{label}')
+                    axes_individual[row, col].set_title(f'Label {label} at Epoch {epoch}')
+                count += 1
+
+        return axes_total, axes_individual
+
+
 def display_umap_for_latent(axes_total, axes_individual, epoch, vae_1, vae_2, data_1, data_2, label_1, label_2):
     vae_1.eval()
     vae_2.eval()
@@ -236,7 +312,7 @@ def display_umap_for_latent(axes_total, axes_individual, epoch, vae_1, vae_2, da
                             edgecolors='w', linewidth=0.5, label=f'{domain}')
 
         # Create a combined legend
-        axes_total[1].set_title(f'UMAP Visualization of Latent Space at Epoch {epoch}')
+        axes_total[1].set_title(f'UMAP Visualization of Latent Space by Domain at {epoch}')
 
         # Define markers and colors
         markers = {'domain1': 'X', 'domain2': 's'}
@@ -256,7 +332,7 @@ def display_umap_for_latent(axes_total, axes_individual, epoch, vae_1, vae_2, da
         # by_label = dict(zip(handles, _))
         # axes_total[0].legend(by_label.values(), by_label.keys(), title='Domain-Label', loc='best', bbox_to_anchor=(1.05, 1))
 
-        axes_total[0].set_title(f'UMAP Visualization of Latent Space at Epoch {epoch}')
+        axes_total[0].set_title(f'UMAP Visualization of Latent Space by Label at {epoch}')
 
         # Plot the data
         count = 0
